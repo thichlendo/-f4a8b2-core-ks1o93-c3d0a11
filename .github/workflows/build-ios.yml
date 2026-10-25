@@ -1,0 +1,31 @@
+name: Build iOS IPA
+
+on:
+  workflow_dispatch: # Cho phép bấm nút kích hoạt bằng tay trên điện thoại
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout mã nguồn
+        uses: actions/checkout@v4
+
+      - name: Kiểm tra môi trường Xcode
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Tạo file IPA mẫu để test luồng
+        run: |
+          mkdir -p Payload
+          echo "Test App" > Payload/test.txt
+          zip -r test-app.ipa Payload
+
+      - name: Xuất file IPA ra Artifacts để tải về
+        uses: actions/upload-artifact@v4
+        with:
+          name: my-test-ipa
+          path: test-app.ipa
