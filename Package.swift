@@ -22,7 +22,10 @@ let package = Package(
                 .product(name: "FirebaseAuth", package: "firebase-ios-sdk"),
                 .product(name: "FirebaseDatabase", package: "firebase-ios-sdk")
             ],
-            path: "src"
+            path: "src",
+            resources: [
+                .copy("GoogleService-Info.plist")
+            ]
         )
     ]
 )
