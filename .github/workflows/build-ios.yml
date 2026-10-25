@@ -2,8 +2,6 @@ name: Build iOS App (IPA)
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ "main" ]
 
 jobs:
   build-ipa:
@@ -22,30 +20,28 @@ jobs:
           fi
           xcodebuild -version
 
-      - name: Biên dịch Swift thuần và Đóng gói IPA
+      - name: Tải thư viện Firebase và Biên dịch
         run: |
-          # 1. Tạo cấu trúc thư mục ứng dụng iOS
-          mkdir -p build/Payload/Miumo.app
-
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
-          echo "Sử dụng iPhoneOS SDK tại: $SDK_PATH"
+          
+          # Biên dịch toàn bộ code và Firebase bằng Swift Package Manager cho iOS
+          swift build -c release \
+            --triple arm64-apple-ios16.0 \
+            -Xswiftc -sdk -Xswiftc "$SDK_PATH"
 
-          # 2. Biên dịch toàn bộ các file .swift trong thư mục src/
-          echo "Đang biên dịch các file Swift trong thư mục src/..."
-          swiftc src/*.swift \
-            -sdk "$SDK_PATH" \
-            -target arm64-apple-ios16.0 \
-            -framework SwiftUI \
-            -framework UIKit \
-            -framework Foundation \
-            -O \
-            -o build/Payload/Miumo.app/Miumo
+      - name: Đóng gói thành file .ipa
+        run: |
+          mkdir -p Payload/Miumo.app
 
-          # 3. Tạo file Info.plist nếu chưa có trong src
+          # Copy file nhị phân vừa biên dịch xong vào app
+          BINARY_PATH=$(find .build/arm64-apple-ios16.0/release -maxdepth 1 -type f -perm +111 -name "Miumo" | head -n 1)
+          cp "$BINARY_PATH" Payload/Miumo.app/Miumo
+
+          # Tạo file Info.plist nếu chưa có
           if [ -f "src/Info.plist" ]; then
-            cp src/Info.plist build/Payload/Miumo.app/Info.plist
+            cp src/Info.plist Payload/Miumo.app/Info.plist
           else
-            cat <<EOF > build/Payload/Miumo.app/Info.plist
+            cat <<EOF > Payload/Miumo.app/Info.plist
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -79,18 +75,16 @@ jobs:
           EOF
           fi
 
-          # Sao chép file cấu hình Firebase nếu có
+          # Sao chép file cấu hình Firebase GoogleService-Info.plist nếu có
           if [ -f "src/GoogleService-Info.plist" ]; then
-            cp src/GoogleService-Info.plist build/Payload/Miumo.app/
+            cp src/GoogleService-Info.plist Payload/Miumo.app/
           fi
 
-          # 4. Ký mã Ad-hoc để cài được qua TrollStore, AltStore, Sideloadly
-          codesign --force --deep --sign - build/Payload/Miumo.app
+          # Ký mã ad-hoc
+          codesign --force --deep --sign - Payload/Miumo.app
 
-          # 5. Đóng gói thành file .ipa
-          cd build
-          zip -r ../Miumo.ipa Payload -x "*.DS_Store"
-          cd ..
+          # Đóng gói zip IPA
+          zip -r Miumo.ipa Payload -x "*.DS_Store"
 
       - name: Tải file IPA lên Artifacts
         uses: actions/upload-artifact@v4
