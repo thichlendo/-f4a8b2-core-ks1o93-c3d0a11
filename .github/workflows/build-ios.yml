@@ -23,21 +23,24 @@ jobs:
       - name: Tải thư viện Firebase và Biên dịch
         run: |
           SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
+          echo "Dùng SDK: $SDK_PATH"
           
-          # Biên dịch toàn bộ code và Firebase bằng Swift Package Manager cho iOS
+          # Cấp đầy đủ cờ SDK cho cả Clang (C/C++) và Swiftc để tránh nạp nhầm header của Mac
           swift build -c release \
             --triple arm64-apple-ios16.0 \
-            -Xswiftc -sdk -Xswiftc "$SDK_PATH"
+            -Xswiftc -sdk -Xswiftc "$SDK_PATH" \
+            -Xcc -isysroot -Xcc "$SDK_PATH" \
+            -Xcc -target -Xcc arm64-apple-ios16.0
 
       - name: Đóng gói thành file .ipa
         run: |
           mkdir -p Payload/Miumo.app
 
-          # Copy file nhị phân vừa biên dịch xong vào app
-          BINARY_PATH=$(find .build/arm64-apple-ios16.0/release -maxdepth 1 -type f -perm +111 -name "Miumo" | head -n 1)
+          # Copy file thực thi
+          BINARY_PATH=$(find .build/arm64-apple-ios/release -maxdepth 1 -type f -perm +111 -name "Miumo" 2>/dev/null || find .build/arm64-apple-ios16.0/release -maxdepth 1 -type f -perm +111 -name "Miumo" | head -n 1)
           cp "$BINARY_PATH" Payload/Miumo.app/Miumo
 
-          # Tạo file Info.plist nếu chưa có
+          # Tạo Info.plist
           if [ -f "src/Info.plist" ]; then
             cp src/Info.plist Payload/Miumo.app/Info.plist
           else
@@ -75,7 +78,7 @@ jobs:
           EOF
           fi
 
-          # Sao chép file cấu hình Firebase GoogleService-Info.plist nếu có
+          # Copy cấu hình Firebase vào bundle
           if [ -f "src/GoogleService-Info.plist" ]; then
             cp src/GoogleService-Info.plist Payload/Miumo.app/
           fi
