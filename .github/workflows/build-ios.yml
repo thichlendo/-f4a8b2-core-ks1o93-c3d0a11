@@ -5,23 +5,16 @@ on:
 
 jobs:
   build-ipa:
-    runs-on: macos-latest
+    runs-on: macos-14
 
     steps:
       - name: Checkout mã nguồn
         uses: actions/checkout@v4
 
-      - name: Chọn phiên bản Xcode 16
-        run: |
-          XCODE_16_PATH=$(find /Applications -maxdepth 1 -name "Xcode_16*.app" | head -n 1)
-          if [ -n "$XCODE_16_PATH" ]; then
-            echo "Đang chuyển sang sử dụng: $XCODE_16_PATH"
-            sudo xcode-select -s "$XCODE_16_PATH/Contents/Developer"
-          else
-            echo "Không tìm thấy thư mục Xcode_16 riêng biệt, tự động tìm bộ Xcode mới nhất hỗ trợ định dạng hiện tại..."
-            sudo xcode-select -r
-          fi
-          xcodebuild -version
+      - name: Cài đặt Xcode 16
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.0'
 
       - name: Biên dịch dự án bằng xcodebuild
         run: |
