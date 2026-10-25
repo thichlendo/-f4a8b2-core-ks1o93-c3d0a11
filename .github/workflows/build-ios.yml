@@ -17,18 +17,36 @@ jobs:
         run: |
           XCODE_APP=$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -n 1)
           if [ -n "$XCODE_APP" ]; then
-            echo "Tìm thấy Xcode 16 tại: $XCODE_APP"
+            echo "Tìm thấy: $XCODE_APP"
             sudo xcode-select -s "$XCODE_APP/Contents/Developer"
-          else
-            echo "Không tìm thấy Xcode 16, sử dụng phiên bản hệ thống hiện tại:"
           fi
           xcodebuild -version
 
       - name: Biên dịch iOS App
         run: |
+          # 1. Tự động tìm file .xcodeproj trong kho lưu trữ
+          PROJECT_FILE=$(find . -maxdepth 3 -name "*.xcodeproj" | head -n 1)
+
+          if [ -z "$PROJECT_FILE" ]; then
+            echo "Lỗi: Không tìm thấy bất kỳ file .xcodeproj nào trong repository!"
+            echo "Danh sách các file hiện tại:"
+            ls -la
+            exit 1
+          fi
+
+          echo "Đang sử dụng project: $PROJECT_FILE"
+
+          # 2. Tự động lấy Scheme đầu tiên của project
+          SCHEME=$(xcodebuild -project "$PROJECT_FILE" -list | awk '/Schemes:/{flag=1; next} flag && NF {print $1; exit}')
+          if [ -z "$SCHEME" ]; then
+            SCHEME="Miumo"
+          fi
+          echo "Đang sử dụng Scheme: $SCHEME"
+
+          # 3. Chạy build
           xcodebuild clean build \
-            -project Miumo.xcodeproj \
-            -scheme Miumo \
+            -project "$PROJECT_FILE" \
+            -scheme "$SCHEME" \
             -sdk iphoneos \
             -configuration Release \
             -derivedDataPath build \
