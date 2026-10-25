@@ -5,22 +5,20 @@ on:
 
 jobs:
   build-ipa:
-    runs-on: macos-latest
+    runs-on: macos-14
 
     steps:
       - name: Checkout mã nguồn
         uses: actions/checkout@v4
 
-      - name: Sửa tương thích định dạng Xcode
+      - name: Kích hoạt Xcode 16 và Biên dịch dự án
+        env:
+          DEVELOPER_DIR: /Applications/Xcode_16.0.app/Contents/Developer
         run: |
-          # Tự động hạ format 77 về 56 để Xcode 15.4 đọc mượt mà
-          if [ -f "Miumo.xcodeproj/project.pbxproj" ]; then
-            sed -i '' 's/objectVersion = 77;/objectVersion = 56;/g' Miumo.xcodeproj/project.pbxproj
-            echo "Đã hạ objectVersion về 56 thành công."
-          fi
+          # 1. Kiểm tra chính xác phiên bản Xcode đang chạy
+          xcodebuild -version
 
-      - name: Biên dịch dự án bằng xcodebuild
-        run: |
+          # 2. Biên dịch trực tiếp trên Xcode 16
           xcodebuild clean build \
             -project Miumo.xcodeproj \
             -scheme Miumo \
