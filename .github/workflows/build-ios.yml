@@ -1,69 +1,29 @@
-name: Build iOS App
+name: Build iOS App (IPA)
 
 on:
-  push:
-    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
-  build-ios:
-    runs-on: macos-14
+  build-ipa:
+    runs-on: macos-latest
+
     steps:
-      - name: Checkout Repository
+      - name: Checkout mã nguồn
         uses: actions/checkout@v4
 
-      - name: Install XcodeGen
-        run: brew install xcodegen
-
-      - name: Generate project.yml
+      - name: Chọn phiên bản Xcode 16
         run: |
-          cat << 'EOF' > project.yml
-          name: Miumo
-          options:
-            bundleIdPrefix: com.miumo
-            deploymentTarget:
-              iOS: "16.0"
-          packages:
-            Firebase:
-              url: https://github.com/firebase/firebase-ios-sdk.git
-              majorVersion: 11.0.0
-          targets:
-            Miumo:
-              type: application
-              platform: iOS
-              deploymentTarget: "16.0"
-              sources:
-                - path: src
-                  includes:
-                    - "**/*.swift"
-                    - "GoogleService-Info.plist"
-              settings:
-                base:
-                  PRODUCT_BUNDLE_IDENTIFIER: com.miumo.app
-                  INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
-                  INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
-                  INFOPLIST_KEY_UILaunchScreen_Generation: YES
-                  INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Cho phép MioMo truy cập thư viện ảnh để đăng bài và cập nhật ảnh đại diện."
-                  INFOPLIST_KEY_CFBundleDisplayName: "MioMo"
-                  MARKETING_VERSION: "1.0.0"
-                  CURRENT_PROJECT_VERSION: "1"
-                  SWIFT_VERSION: "5.0"
-                  CODE_SIGN_IDENTITY: ""
-                  CODE_SIGNING_REQUIRED: NO
-                  CODE_SIGNING_ALLOWED: NO
-              dependencies:
-                - package: Firebase
-                  product: FirebaseCore
-                - package: Firebase
-                  product: FirebaseAuth
-                - package: Firebase
-                  product: FirebaseDatabase
-          EOF
+          XCODE_16_PATH=$(find /Applications -maxdepth 1 -name "Xcode_16*.app" | head -n 1)
+          if [ -n "$XCODE_16_PATH" ]; then
+            echo "Đang chuyển sang sử dụng: $XCODE_16_PATH"
+            sudo xcode-select -s "$XCODE_16_PATH/Contents/Developer"
+          else
+            echo "Không tìm thấy thư mục Xcode_16 riêng biệt, tự động tìm bộ Xcode mới nhất hỗ trợ định dạng hiện tại..."
+            sudo xcode-select -r
+          fi
+          xcodebuild -version
 
-      - name: Generate Xcode Project
-        run: xcodegen generate
-
-      - name: Build Unsigned iOS App
+      - name: Biên dịch dự án bằng xcodebuild
         run: |
           xcodebuild clean build \
             -project Miumo.xcodeproj \
@@ -75,14 +35,22 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO
 
-      - name: Package IPA
+      - name: Đóng gói thành file .ipa
         run: |
           mkdir -p Payload
-          cp -r build/Build/Products/Release-iphoneos/Miumo.app Payload/
-          zip -r Miumo-iOS.ipa Payload
+          APP_PATH=$(find build/Build/Products/Release-iphoneos -name "*.app" | head -n 1)
+          
+          if [ -z "$APP_PATH" ]; then
+            echo "Lỗi: Không tìm thấy file .app sau khi biên dịch!"
+            exit 1
+          fi
+          
+          cp -R "$APP_PATH" Payload/
+          zip -r Miumo.ipa Payload -x "*.DS_Store"
 
-      - name: Upload IPA Artifact
+      - name: Tải file IPA lên Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Miumo-iOS-IPA
-          path: Miumo-iOS.ipa
+          name: Miumo-iOS-App
+          path: Miumo.ipa
+          retention-days: 7
