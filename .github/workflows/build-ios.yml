@@ -2,6 +2,8 @@ name: Build iOS App (IPA)
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ "main" ]
 
 jobs:
   build-ipa:
@@ -11,14 +13,19 @@ jobs:
       - name: Checkout mã nguồn
         uses: actions/checkout@v4
 
-      - name: Kích hoạt Xcode 16 và Biên dịch dự án
-        env:
-          DEVELOPER_DIR: /Applications/Xcode_16.0.app/Contents/Developer
+      - name: Kích hoạt Xcode 16
         run: |
-          # 1. Kiểm tra chính xác phiên bản Xcode đang chạy
+          XCODE_APP=$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -n 1)
+          if [ -n "$XCODE_APP" ]; then
+            echo "Tìm thấy Xcode 16 tại: $XCODE_APP"
+            sudo xcode-select -s "$XCODE_APP/Contents/Developer"
+          else
+            echo "Không tìm thấy Xcode 16, sử dụng phiên bản hệ thống hiện tại:"
+          fi
           xcodebuild -version
 
-          # 2. Biên dịch trực tiếp trên Xcode 16
+      - name: Biên dịch iOS App
+        run: |
           xcodebuild clean build \
             -project Miumo.xcodeproj \
             -scheme Miumo \
@@ -29,13 +36,13 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO
 
-      - name: Đóng gói thành file .ipa
+      - name: Đóng gói file .ipa
         run: |
           mkdir -p Payload
           APP_PATH=$(find build/Build/Products/Release-iphoneos -name "*.app" | head -n 1)
           
           if [ -z "$APP_PATH" ]; then
-            echo "Lỗi: Không tìm thấy file .app sau khi biên dịch!"
+            echo "Lỗi: Không tìm thấy file .app sau khi build!"
             exit 1
           fi
           
