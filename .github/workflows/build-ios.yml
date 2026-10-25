@@ -22,50 +22,75 @@ jobs:
           fi
           xcodebuild -version
 
-      - name: Biên dịch iOS App
+      - name: Biên dịch Swift thuần và Đóng gói IPA
         run: |
-          # 1. Tự động tìm file .xcodeproj trong kho lưu trữ
-          PROJECT_FILE=$(find . -maxdepth 3 -name "*.xcodeproj" | head -n 1)
+          # 1. Tạo cấu trúc thư mục ứng dụng iOS
+          mkdir -p build/Payload/Miumo.app
 
-          if [ -z "$PROJECT_FILE" ]; then
-            echo "Lỗi: Không tìm thấy bất kỳ file .xcodeproj nào trong repository!"
-            echo "Danh sách các file hiện tại:"
-            ls -la
-            exit 1
+          SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
+          echo "Sử dụng iPhoneOS SDK tại: $SDK_PATH"
+
+          # 2. Biên dịch toàn bộ các file .swift trong thư mục src/
+          echo "Đang biên dịch các file Swift trong thư mục src/..."
+          swiftc src/*.swift \
+            -sdk "$SDK_PATH" \
+            -target arm64-apple-ios16.0 \
+            -framework SwiftUI \
+            -framework UIKit \
+            -framework Foundation \
+            -O \
+            -o build/Payload/Miumo.app/Miumo
+
+          # 3. Tạo file Info.plist nếu chưa có trong src
+          if [ -f "src/Info.plist" ]; then
+            cp src/Info.plist build/Payload/Miumo.app/Info.plist
+          else
+            cat <<EOF > build/Payload/Miumo.app/Info.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>Miumo</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.miumo.app</string>
+              <key>CFBundleName</key>
+              <string>Miumo</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleShortVersionString</key>
+              <string>1.0</string>
+              <key>CFBundleVersion</key>
+              <string>1</string>
+              <key>LSRequiresIPhoneOS</key>
+              <true/>
+              <key>UILaunchScreen</key>
+              <dict/>
+              <key>UIRequiredDeviceCapabilities</key>
+              <array>
+                  <string>arm64</string>
+              </array>
+              <key>UISupportedInterfaceOrientations</key>
+              <array>
+                  <string>UIInterfaceOrientationPortrait</string>
+              </array>
+          </dict>
+          </plist>
+          EOF
           fi
 
-          echo "Đang sử dụng project: $PROJECT_FILE"
-
-          # 2. Tự động lấy Scheme đầu tiên của project
-          SCHEME=$(xcodebuild -project "$PROJECT_FILE" -list | awk '/Schemes:/{flag=1; next} flag && NF {print $1; exit}')
-          if [ -z "$SCHEME" ]; then
-            SCHEME="Miumo"
+          # Sao chép file cấu hình Firebase nếu có
+          if [ -f "src/GoogleService-Info.plist" ]; then
+            cp src/GoogleService-Info.plist build/Payload/Miumo.app/
           fi
-          echo "Đang sử dụng Scheme: $SCHEME"
 
-          # 3. Chạy build
-          xcodebuild clean build \
-            -project "$PROJECT_FILE" \
-            -scheme "$SCHEME" \
-            -sdk iphoneos \
-            -configuration Release \
-            -derivedDataPath build \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
+          # 4. Ký mã Ad-hoc để cài được qua TrollStore, AltStore, Sideloadly
+          codesign --force --deep --sign - build/Payload/Miumo.app
 
-      - name: Đóng gói file .ipa
-        run: |
-          mkdir -p Payload
-          APP_PATH=$(find build/Build/Products/Release-iphoneos -name "*.app" | head -n 1)
-          
-          if [ -z "$APP_PATH" ]; then
-            echo "Lỗi: Không tìm thấy file .app sau khi build!"
-            exit 1
-          fi
-          
-          cp -R "$APP_PATH" Payload/
-          zip -r Miumo.ipa Payload -x "*.DS_Store"
+          # 5. Đóng gói thành file .ipa
+          cd build
+          zip -r ../Miumo.ipa Payload -x "*.DS_Store"
+          cd ..
 
       - name: Tải file IPA lên Artifacts
         uses: actions/upload-artifact@v4
