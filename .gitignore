@@ -1,0 +1,14 @@
+# Exclude AI Studio web preview files from GitHub Sync
+node_modules/
+dist/
+preview/
+public/
+index.html
+package.json
+package-lock.json
+tsconfig.json
+vite.config.ts
+metadata.json
+.env
+.env.*
+.DS_Store

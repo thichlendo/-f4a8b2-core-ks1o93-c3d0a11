@@ -1,84 +1,88 @@
-name: Build iOS App (IPA)
+name: Build iOS App
 
 on:
+  push:
+    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
-  build-ipa:
-    runs-on: macos-latest
-
+  build-ios:
+    runs-on: macos-14
     steps:
-      - name: Checkout mã nguồn
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Khởi tạo cấu trúc App Bundle
-        run: |
-          mkdir -p build/Payload/MyApp.app
+      - name: Install XcodeGen
+        run: brew install xcodegen
 
-      - name: Tạo file Info.plist chuẩn iOS
+      - name: Generate project.yml
         run: |
-          cat << 'EOF' > build/Payload/MyApp.app/Info.plist
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>CFBundleExecutable</key>
-              <string>MyApp</string>
-              <key>CFBundleIdentifier</key>
-              <string>com.miumo.app</string>
-              <key>CFBundleName</key>
-              <string>Miumo</string>
-              <key>CFBundleDisplayName</key>
-              <string>Miumo</string>
-              <key>CFBundlePackageType</key>
-              <string>APPL</string>
-              <key>CFBundleShortVersionString</key>
-              <string>1.0</string>
-              <key>CFBundleVersion</key>
-              <string>1</string>
-              <key>LSRequiresIPhoneOS</key>
-              <true/>
-              <key>UILaunchScreen</key>
-              <dict/>
-              <key>UIRequiredDeviceCapabilities</key>
-              <array>
-                  <string>arm64</string>
-              </array>
-              <key>UISupportedInterfaceOrientations</key>
-              <array>
-                  <string>UIInterfaceOrientationPortrait</string>
-              </array>
-          </dict>
-          </plist>
+          cat << 'EOF' > project.yml
+          name: Miumo
+          options:
+            bundleIdPrefix: com.miumo
+            deploymentTarget:
+              iOS: "16.0"
+          packages:
+            Firebase:
+              url: https://github.com/firebase/firebase-ios-sdk.git
+              majorVersion: 11.0.0
+          targets:
+            Miumo:
+              type: application
+              platform: iOS
+              deploymentTarget: "16.0"
+              sources:
+                - path: src
+                  includes:
+                    - "**/*.swift"
+                    - "GoogleService-Info.plist"
+              settings:
+                base:
+                  PRODUCT_BUNDLE_IDENTIFIER: com.miumo.app
+                  INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+                  INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
+                  INFOPLIST_KEY_UILaunchScreen_Generation: YES
+                  INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Cho phép MioMo truy cập thư viện ảnh để đăng bài và cập nhật ảnh đại diện."
+                  INFOPLIST_KEY_CFBundleDisplayName: "MioMo"
+                  MARKETING_VERSION: "1.0.0"
+                  CURRENT_PROJECT_VERSION: "1"
+                  SWIFT_VERSION: "5.0"
+                  CODE_SIGN_IDENTITY: ""
+                  CODE_SIGNING_REQUIRED: NO
+                  CODE_SIGNING_ALLOWED: NO
+              dependencies:
+                - package: Firebase
+                  product: FirebaseCore
+                - package: Firebase
+                  product: FirebaseAuth
+                - package: Firebase
+                  product: FirebaseDatabase
           EOF
 
-      - name: Biên dịch Swift và đóng gói tài nguyên
+      - name: Generate Xcode Project
+        run: xcodegen generate
+
+      - name: Build Unsigned iOS App
         run: |
-          swiftc src/*.swift \
-            -o build/Payload/MyApp.app/MyApp \
-            -target arm64-apple-ios16.0 \
-            -sdk $(xcrun --sdk iphoneos --show-sdk-path) \
-            -framework SwiftUI \
-            -framework UIKit \
-            -O
+          xcodebuild clean build \
+            -project Miumo.xcodeproj \
+            -scheme Miumo \
+            -sdk iphoneos \
+            -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
 
-          if [ -f "src/GoogleService-Info.plist" ]; then
-            cp src/GoogleService-Info.plist build/Payload/MyApp.app/GoogleService-Info.plist
-            echo "Đã sao chép GoogleService-Info.plist thành công."
-          else
-            echo "Cảnh báo: Không tìm thấy src/GoogleService-Info.plist."
-          fi
-
-          codesign -s - --force --deep build/Payload/MyApp.app
-
-      - name: Nén thành file .ipa
+      - name: Package IPA
         run: |
-          cd build
-          zip -r ../Miumo.ipa Payload -x "*.DS_Store"
+          mkdir -p Payload
+          cp -r build/Build/Products/Release-iphoneos/Miumo.app Payload/
+          zip -r Miumo-iOS.ipa Payload
 
-      - name: Tải file IPA lên Artifacts
+      - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Miumo-iOS-App
-          path: Miumo.ipa
-          retention-days: 7
+          name: Miumo-iOS-IPA
+          path: Miumo-iOS.ipa
