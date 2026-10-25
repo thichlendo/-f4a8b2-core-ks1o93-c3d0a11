@@ -2,9 +2,6 @@ name: Build iOS App (IPA)
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
 
 jobs:
   build-ipa:
@@ -16,7 +13,6 @@ jobs:
 
       - name: Khởi tạo cấu trúc App Bundle
         run: |
-          # Cấu trúc chuẩn của một gói IPA: Payload/<AppName>.app/
           mkdir -p build/Payload/MyApp.app
 
       - name: Tạo file Info.plist chuẩn iOS
@@ -58,7 +54,6 @@ jobs:
 
       - name: Biên dịch Swift và đóng gói tài nguyên
         run: |
-          # Biên dịch toàn bộ các file .swift trong thư mục src
           swiftc src/*.swift \
             -o build/Payload/MyApp.app/MyApp \
             -target arm64-apple-ios16.0 \
@@ -67,7 +62,6 @@ jobs:
             -framework UIKit \
             -O
 
-          # Sao chép file cấu hình Firebase vào bên trong App Bundle
           if [ -f "src/GoogleService-Info.plist" ]; then
             cp src/GoogleService-Info.plist build/Payload/MyApp.app/GoogleService-Info.plist
             echo "Đã sao chép GoogleService-Info.plist thành công."
@@ -75,7 +69,6 @@ jobs:
             echo "Cảnh báo: Không tìm thấy src/GoogleService-Info.plist."
           fi
 
-          # Ký mã ad-hoc để tương thích với các công cụ sideload (TrollStore, Scarlet, ESign, Sideloadly)
           codesign -s - --force --deep build/Payload/MyApp.app
 
       - name: Nén thành file .ipa
