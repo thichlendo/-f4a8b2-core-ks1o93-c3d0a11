@@ -1,57 +1,91 @@
-name: Build SwiftUI App
+name: Build iOS App (IPA)
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
-  build:
+  build-ipa:
     runs-on: macos-latest
 
     steps:
-      - name: Checkout repo
+      - name: Checkout mã nguồn
         uses: actions/checkout@v4
 
-      - name: Kiểm tra hoặc khởi tạo code SwiftUI
+      - name: Khởi tạo cấu trúc App Bundle
         run: |
-          mkdir -p MyApp
-          # Nếu chưa có code, tạo 1 file Swift giao diện đơn giản
-          cat << 'EOF' > MyApp/main.swift
-          import SwiftUI
+          # Cấu trúc chuẩn của một gói IPA: Payload/<AppName>.app/
+          mkdir -p build/Payload/MyApp.app
 
-          @main
-          struct MySimpleApp: App {
-              var body: some Scene {
-                  WindowGroup {
-                      VStack(spacing: 20) {
-                          Image(systemName: "globe")
-                              .imageScale(.large)
-                              .foregroundColor(.accentColor)
-                          Text("Xin chào! Đây là app iOS đầu tiên.")
-                              .font(.title2)
-                              .bold()
-                          Text("Được build hoàn toàn bằng GitHub Actions!")
-                              .foregroundColor(.gray)
-                      }
-                      .padding()
-                  }
-              }
-          }
+      - name: Tạo file Info.plist chuẩn iOS
+        run: |
+          cat << 'EOF' > build/Payload/MyApp.app/Info.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>MyApp</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.miumo.app</string>
+              <key>CFBundleName</key>
+              <string>Miumo</string>
+              <key>CFBundleDisplayName</key>
+              <string>Miumo</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleShortVersionString</key>
+              <string>1.0</string>
+              <key>CFBundleVersion</key>
+              <string>1</string>
+              <key>LSRequiresIPhoneOS</key>
+              <true/>
+              <key>UILaunchScreen</key>
+              <dict/>
+              <key>UIRequiredDeviceCapabilities</key>
+              <array>
+                  <string>arm64</string>
+              </array>
+              <key>UISupportedInterfaceOrientations</key>
+              <array>
+                  <string>UIInterfaceOrientationPortrait</string>
+              </array>
+          </dict>
+          </plist>
           EOF
 
-      - name: Build ứng dụng ra file .app
+      - name: Biên dịch Swift và đóng gói tài nguyên
         run: |
-          mkdir -p build/Payload
-          swiftc MyApp/main.swift -o build/Payload/MyApp \
+          # Biên dịch toàn bộ các file .swift trong thư mục src
+          swiftc src/*.swift \
+            -o build/Payload/MyApp.app/MyApp \
             -target arm64-apple-ios16.0 \
             -sdk $(xcrun --sdk iphoneos --show-sdk-path) \
-            -framework SwiftUI -framework UIKit || echo "Biên dịch dự phòng"
-          
-          # Đóng gói thành file IPA chuẩn
-          cd build
-          zip -r ../MyApp.ipa Payload
+            -framework SwiftUI \
+            -framework UIKit \
+            -O
 
-      - name: Xuất file IPA
+          # Sao chép file cấu hình Firebase vào bên trong App Bundle
+          if [ -f "src/GoogleService-Info.plist" ]; then
+            cp src/GoogleService-Info.plist build/Payload/MyApp.app/GoogleService-Info.plist
+            echo "Đã sao chép GoogleService-Info.plist thành công."
+          else
+            echo "Cảnh báo: Không tìm thấy src/GoogleService-Info.plist."
+          fi
+
+          # Ký mã ad-hoc để tương thích với các công cụ sideload (TrollStore, Scarlet, ESign, Sideloadly)
+          codesign -s - --force --deep build/Payload/MyApp.app
+
+      - name: Nén thành file .ipa
+        run: |
+          cd build
+          zip -r ../Miumo.ipa Payload -x "*.DS_Store"
+
+      - name: Tải file IPA lên Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: MyApp-iOS
-          path: MyApp.ipa
+          name: Miumo-iOS-App
+          path: Miumo.ipa
+          retention-days: 7
