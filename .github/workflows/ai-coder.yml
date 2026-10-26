@@ -20,14 +20,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Cài đặt Python và thư viện
+      - name: Cài đặt Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Cài đặt Google GenAI
+      - name: Cài đặt Google GenAI SDK
         run: |
-          pip install google-generativeai
+          pip install google-genai
 
       - name: AI đọc dự án và tự động sửa code
         env:
@@ -38,22 +38,22 @@ jobs:
           import os
           import glob
           import json
-          import google.generativeai as genai
+          from google import genai
+          from google.genai import types
 
           api_key = os.environ.get("GEMINI_API_KEY")
           user_prompt = os.environ.get("USER_PROMPT")
 
-          genai.configure(api_key=api_key)
-          model = genai.GenerativeModel("gemini-1.5-pro-latest")
+          client = genai.Client(api_key=api_key)
 
-          # Đọc toàn bộ các file trong thư mục src/
+          # Đọc toàn bộ các file mã nguồn trong thư mục src/
           codebase = {}
           for file_path in glob.glob("src/**/*", recursive=True):
-              if os.path.isfile(file_path) and not file_path.endswith(('.png', '.jpg', '.jpeg')):
+              if os.path.isfile(file_path) and not file_path.endswith(('.png', '.jpg', '.jpeg', '.ipk', '.ipa', '.zip')):
                   try:
                       with open(file_path, "r", encoding="utf-8") as f:
                           codebase[file_path] = f.read()
-                  except Exception as e:
+                  except Exception:
                       pass
 
           context = "Dưới đây là toàn bộ mã nguồn hiện tại của dự án trong thư mục src/:\n\n"
@@ -61,28 +61,46 @@ jobs:
               context += f"--- BẮT ĐẦU FILE: {path} ---\n{content}\n--- KẾT THÚC FILE ---\n\n"
 
           system_instruction = (
-              "Bạn là một lập trình viên iOS cấp cao. "
-              "Người dùng sẽ yêu cầu sửa đổi hoặc bổ sung tính năng bằng SwiftUI (iOS 16+ native). "
-              "Nhiệm vụ của bạn là xem xét toàn bộ các file, quyết định file nào cần sửa hoặc tạo mới, "
-              "và trả về kết quả DUY NHẤT dưới dạng JSON hợp lệ (không kèm markdown ngoài JSON). "
-              "Định dạng JSON như sau:\n"
+              "Bạn là kỹ sư phần mềm iOS cao cấp chuyên sâu về SwiftUI (iOS 16+ native). "
+              "Nhiệm vụ của bạn là phân tích toàn diện mã nguồn hiện tại và yêu cầu của người dùng, "
+              "sau đó tự động tạo mới hoặc sửa đổi các file cần thiết trong thư mục src/. "
+              "YÊU CẦU BẮT BUỘC:\n"
+              "1. Trả về kết quả duy nhất ở định dạng JSON hợp lệ (không kèm markdown bên ngoài).\n"
+              "2. Viết mã nguồn hoàn chỉnh 100%, không cắt xén, không để lại chú thích // TODO hoặc // Code tiếp tục ở đây.\n"
+              "Định dạng JSON:\n"
               "{\n"
               '  "files": [\n'
-              '    {"path": "src/FeedView.swift", "content": "Nội dung hoàn chỉnh 100% của file..."},\n'
-              '    {"path": "src/Models.swift", "content": "Nội dung hoàn chỉnh 100% của file..."}\n'
+              '    {"path": "src/Views/LoginView.swift", "content": "Toàn bộ code mới..."}\n'
               '  ],\n'
-              '  "commit_message": "Mô tả ngắn về thay đổi"\n'
-              "}\n"
-              "LƯU Ý CỰC KỲ QUAN TRỌNG: Viết mã nguồn hoàn chỉnh 100%, không dùng code rút gọn hay chú thích // TODO."
+              '  "commit_message": "Mô tả ngắn gọn nội dung cập nhật"\n'
+              "}"
           )
 
-          full_prompt = f"{system_instruction}\n\n{context}\n\nYÊU CẦU CỦA NGƯỜI DÙNG:\n{user_prompt}"
+          full_prompt = f"{context}\n\nYÊU CẦU CỦA NGƯỜI DÙNG:\n{user_prompt}"
 
-          print("Đang gửi yêu cầu và toàn bộ code sang Gemini 1.5 Pro...")
-          response = model.generate_content(
-              full_prompt,
-              generation_config={"response_mime_type": "application/json", "temperature": 0.2}
-          )
+          # Ưu tiên gọi model tối tân nhất gemini-4-argon, có fallback dự phòng
+          target_models = ["gemini-4-argon", "gemini-2.5-pro", "gemini-1.5-pro"]
+          response = None
+
+          for model_name in target_models:
+              try:
+                  print(f"Đang gửi yêu cầu sang model: {model_name}...")
+                  response = client.models.generate_content(
+                      model=model_name,
+                      contents=full_prompt,
+                      config=types.GenerateContentConfig(
+                          system_instruction=system_instruction,
+                          response_mime_type="application/json",
+                          temperature=0.2,
+                      ),
+                  )
+                  print(f"-> Phản hồi thành công từ: {model_name}")
+                  break
+              except Exception as err:
+                  print(f"Không thể kết nối {model_name}: {err}. Đang chuyển model tiếp theo...")
+
+          if not response or not response.text:
+              raise RuntimeError("Tất cả các model đều không phản hồi.")
 
           data = json.loads(response.text)
 
