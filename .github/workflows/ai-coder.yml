@@ -1,0 +1,111 @@
+name: Auto Code with Gemini
+
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: 'Nhập yêu cầu sửa/thêm tính năng cho dự án'
+        required: true
+        type: string
+
+jobs:
+  ai-code:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout mã nguồn
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Cài đặt Python và thư viện
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cài đặt Google GenAI
+        run: |
+          pip install google-generativeai
+
+      - name: AI đọc dự án và tự động sửa code
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          USER_PROMPT: ${{ github.event.inputs.prompt }}
+        run: |
+          python3 - << 'EOF'
+          import os
+          import glob
+          import json
+          import google.generativeai as genai
+
+          api_key = os.environ.get("GEMINI_API_KEY")
+          user_prompt = os.environ.get("USER_PROMPT")
+
+          genai.configure(api_key=api_key)
+          model = genai.GenerativeModel("gemini-1.5-pro-latest")
+
+          # Đọc toàn bộ các file trong thư mục src/
+          codebase = {}
+          for file_path in glob.glob("src/**/*", recursive=True):
+              if os.path.isfile(file_path) and not file_path.endswith(('.png', '.jpg', '.jpeg')):
+                  try:
+                      with open(file_path, "r", encoding="utf-8") as f:
+                          codebase[file_path] = f.read()
+                  except Exception as e:
+                      pass
+
+          context = "Dưới đây là toàn bộ mã nguồn hiện tại của dự án trong thư mục src/:\n\n"
+          for path, content in codebase.items():
+              context += f"--- BẮT ĐẦU FILE: {path} ---\n{content}\n--- KẾT THÚC FILE ---\n\n"
+
+          system_instruction = (
+              "Bạn là một lập trình viên iOS cấp cao. "
+              "Người dùng sẽ yêu cầu sửa đổi hoặc bổ sung tính năng bằng SwiftUI (iOS 16+ native). "
+              "Nhiệm vụ của bạn là xem xét toàn bộ các file, quyết định file nào cần sửa hoặc tạo mới, "
+              "và trả về kết quả DUY NHẤT dưới dạng JSON hợp lệ (không kèm markdown ngoài JSON). "
+              "Định dạng JSON như sau:\n"
+              "{\n"
+              '  "files": [\n'
+              '    {"path": "src/FeedView.swift", "content": "Nội dung hoàn chỉnh 100% của file..."},\n'
+              '    {"path": "src/Models.swift", "content": "Nội dung hoàn chỉnh 100% của file..."}\n'
+              '  ],\n'
+              '  "commit_message": "Mô tả ngắn về thay đổi"\n'
+              "}\n"
+              "LƯU Ý CỰC KỲ QUAN TRỌNG: Viết mã nguồn hoàn chỉnh 100%, không dùng code rút gọn hay chú thích // TODO."
+          )
+
+          full_prompt = f"{system_instruction}\n\n{context}\n\nYÊU CẦU CỦA NGƯỜI DÙNG:\n{user_prompt}"
+
+          print("Đang gửi yêu cầu và toàn bộ code sang Gemini 1.5 Pro...")
+          response = model.generate_content(
+              full_prompt,
+              generation_config={"response_mime_type": "application/json", "temperature": 0.2}
+          )
+
+          data = json.loads(response.text)
+
+          for item in data.get("files", []):
+              fpath = item["path"]
+              os.makedirs(os.path.dirname(fpath), exist_ok=True)
+              with open(fpath, "w", encoding="utf-8") as f:
+                  f.write(item["content"])
+              print(f"Đã cập nhật: {fpath}")
+
+          with open("commit_msg.txt", "w", encoding="utf-8") as f:
+              f.write(data.get("commit_message", f"AI update: {user_prompt}"))
+          EOF
+
+      - name: Tự động Commit & Push code mới
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add src/
+          if git diff --staged --quiet; then
+            echo "Không có thay đổi nào được tạo."
+          else
+            COMMIT_MSG=$(cat commit_msg.txt)
+            git commit -m "$COMMIT_MSG"
+            git push origin main
+          fi
