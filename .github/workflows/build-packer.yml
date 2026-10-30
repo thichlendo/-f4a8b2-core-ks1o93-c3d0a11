@@ -1,0 +1,318 @@
+name: AI Coder & Build Android Shield
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: 'Chọn mô hình AI (literouter.fun)'
+        required: true
+        type: choice
+        default: 'claude-sonnet-4-6'
+        options:
+          - claude-sonnet-4-6
+          - gpt-6-luna
+          - gpt-6-terra
+          - deepseek-v4.1-flash-1017
+          - deepseek-v4.1-flash-1017-jb
+          - grok-4.6
+          - glm-5.3
+      prompt:
+        description: 'Nhập lệnh yêu cầu AI viết/sửa code (Để trống nếu chỉ muốn Build APK)'
+        required: false
+        type: string
+
+jobs:
+  ai-and-build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout mã nguồn
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Cài đặt JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Cài đặt Python & Thư viện kết nối API
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Khởi tạo khung dự án mặc định (Nếu chưa có)
+        run: |
+          if [ ! -f "app/build.gradle" ]; then
+            mkdir -p app/src/main/java/com/secure/stub
+            mkdir -p app/src/main/cpp/engine
+            mkdir -p app/src/main/cpp/security
+            mkdir -p app/src/main/assets
+
+            cat << 'EOF' > settings.gradle
+          rootProject.name = "SecurePacker"
+          include ':app'
+          EOF
+
+            cat << 'EOF' > build.gradle
+          buildscript {
+              repositories { google(); mavenCentral() }
+              dependencies { classpath 'com.android.tools.build:gradle:8.2.2' }
+          }
+          allprojects {
+              repositories { google(); mavenCentral() }
+          }
+          EOF
+
+            cat << 'EOF' > app/obf-dict.txt
+          I242a775e
+          cxk
+          jntm
+          a9f3e1b
+          b7d2c4a
+          EOF
+
+            cat << 'EOF' > app/proguard-rules.pro
+          -repackageclasses 'v242a775e'
+          -flattenpackagehierarchy 'v242a775e'
+          -classobfuscationdictionary obf-dict.txt
+          -obfuscationdictionary obf-dict.txt
+          -allowaccessmodification
+          -overloadaggressively
+          -renamesourcefileattribute ''
+          -keepattributes !SourceFile,!LineNumberTable
+          -keep class com.secure.stub.StubApp { <init>(); public static native boolean a(android.content.Context); }
+          -keep class com.secure.stub.MainActivity { <init>(); }
+          EOF
+
+            cat << 'EOF' > app/src/main/AndroidManifest.xml
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.secure.stub">
+              <uses-permission android:name="android.permission.INTERNET" />
+              <application android:name="com.secure.stub.StubApp" android:allowBackup="false" android:label="SecureShield">
+                  <activity android:name="com.secure.stub.MainActivity" android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+            cat << 'EOF' > app/src/main/java/com/secure/stub/StubApp.java
+          package com.secure.stub;
+          import android.app.Application;
+          import android.content.Context;
+          import android.os.Process;
+          public class StubApp extends Application {
+              static { System.loadLibrary("core_shield"); }
+              public static native boolean a(Context ctx);
+              @Override
+              protected void attachBaseContext(Context base) {
+                  super.attachBaseContext(base);
+                  if (!a(base)) { Process.killProcess(Process.myPid()); System.exit(0); }
+              }
+          }
+          EOF
+
+            cat << 'EOF' > app/src/main/java/com/secure/stub/MainActivity.java
+          package com.secure.stub;
+          import android.app.Activity;
+          import android.os.Bundle;
+          import android.widget.TextView;
+          public class MainActivity extends Activity {
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  TextView tv = new TextView(this);
+                  tv.setText("Protected by Native Core Shield");
+                  setContentView(tv);
+              }
+          }
+          EOF
+
+            cat << 'EOF' > app/src/main/cpp/entry.cpp
+          #include <jni.h>
+          extern "C" JNIEXPORT jboolean JNICALL
+          Java_com_secure_stub_StubApp_a(JNIEnv* env, jclass, jobject context) {
+              return JNI_TRUE;
+          }
+          EOF
+
+            cat << 'EOF' > app/src/main/cpp/CMakeLists.txt
+          cmake_minimum_required(VERSION 3.22.1)
+          project("core_shield")
+          set(CMAKE_CXX_STANDARD 17)
+          set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -fvisibility=hidden")
+          set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--strip-all")
+          file(GLOB_RECURSE CPP_SOURCES "*.cpp")
+          add_library(core_shield SHARED ${CPP_SOURCES})
+          find_library(log-lib log)
+          target_link_libraries(core_shield ${log-lib})
+          EOF
+
+            cat << 'EOF' > app/build.gradle
+          apply plugin: 'com.android.application'
+          android {
+              namespace 'com.secure.stub'
+              compileSdk 34
+              defaultConfig {
+                  applicationId "com.secure.stub"
+                  minSdk 26
+                  targetSdk 34
+                  versionCode 1
+                  versionName "1.0"
+                  ndk { abiFilters 'arm64-v8a' }
+              }
+              signingConfigs {
+                  release {
+                      storeFile file("release.keystore")
+                      storePassword "123456"
+                      keyAlias "shieldkey"
+                      keyPassword "123456"
+                  }
+              }
+              buildTypes {
+                  release {
+                      minifyEnabled true
+                      shrinkResources false
+                      signingConfig signingConfigs.release
+                      proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+                  }
+              }
+              externalNativeBuild {
+                  cmake { path "src/main/cpp/CMakeLists.txt"; version "3.22.1" }
+              }
+          }
+          EOF
+          fi
+
+      - name: Gọi AI thực thi câu lệnh & Xuất trang báo cáo trực tiếp
+        if: ${{ github.event.inputs.prompt != '' }}
+        env:
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
+          AI_MODEL: ${{ github.event.inputs.model }}
+          USER_PROMPT: ${{ github.event.inputs.prompt }}
+          STEP_SUMMARY: ${{ env.GITHUB_STEP_SUMMARY }}
+        run: |
+          pip install requests
+          python3 - << 'EOF'
+          import os, glob, json, re, requests
+
+          api_key = os.environ.get("AI_API_KEY", "").strip()
+          model = os.environ.get("AI_MODEL", "claude-sonnet-4-6").strip()
+          prompt = os.environ.get("USER_PROMPT", "").strip()
+          summary_file = os.environ.get("STEP_SUMMARY")
+
+          if not api_key:
+              raise RuntimeError("Chưa cấu hình AI_API_KEY trong GitHub Secrets!")
+
+          # Thu thập toàn bộ mã nguồn hiện tại
+          codebase = {}
+          for path in glob.glob("app/**/*", recursive=True):
+              if os.path.isfile(path) and not path.endswith(('.keystore', '.png', '.jpg', '.so', '.jar')):
+                  try:
+                      with open(path, "r", encoding="utf-8") as f:
+                          codebase[path] = f.read()
+                  except Exception:
+                      pass
+
+          context_str = "MÃ NGUỒN HIỆN TẠI CỦA DỰ ÁN:\n\n"
+          for p, c in codebase.items():
+              context_str += f"--- FILE: {p} ---\n{c}\n--- END FILE ---\n\n"
+
+          system_prompt = (
+              "Bạn là chuyên gia lập trình Android NDK C++ và Java bảo mật cấp cao. "
+              "Phân tích mã nguồn hiện tại và thực hiện yêu cầu của người dùng. "
+              "BẮT BUỘC trả về kết quả duy nhất dưới định dạng JSON hợp lệ (không bọc markdown bên ngoài nếu có thể) theo cấu trúc:\n"
+              "{\n"
+              '  "status": "LÀM ĐƯỢC hoặc KHÔNG LÀM ĐƯỢC",\n'
+              '  "answer": "Giải thích chi tiết AI đã làm gì và trả lời câu lệnh của người dùng",\n'
+              '  "files": [\n'
+              '    {"path": "app/src/main/cpp/...", "content": "Toàn bộ code hoàn chỉnh 100% không cắt xén"}\n'
+              '  ],\n'
+              '  "commit_message": "Mô tả ngắn gọn thay đổi"\n'
+              "}"
+          )
+
+          headers = {
+              "Authorization": f"Bearer {api_key}",
+              "Content-Type": "application/json"
+          }
+          payload = {
+              "model": model,
+              "messages": [
+                  {"role": "system", "content": system_prompt},
+                  {"role": "user", "content": f"{context_str}\n\nYÊU CẦU CỦA TÔI:\n{prompt}"}
+              ],
+              "temperature": 0.2
+          }
+
+          print(f"Đang gửi lệnh tới mô hình [{model}] qua literouter.fun...")
+          resp = requests.post("https://literouter.fun/v1/chat/completions", headers=headers, json=payload, timeout=180)
+          resp.raise_for_status()
+          res_json = resp.json()
+          raw_text = res_json["choices"][0]["message"]["content"].strip()
+
+          # Bóc tách JSON an toàn
+          match = re.search(r'\{[\s\S]*\}', raw_text)
+          data = json.loads(match.group(0) if match else raw_text)
+
+          status = data.get("status", "LÀM ĐƯỢC")
+          answer = data.get("answer", "Đã xử lý yêu cầu.")
+          files = data.get("files", [])
+
+          updated_list = []
+          for item in files:
+              fpath = item["path"]
+              os.makedirs(os.path.dirname(fpath), exist_ok=True)
+              with open(fpath, "w", encoding="utf-8") as f:
+                  f.write(item["content"])
+              updated_list.append(fpath)
+              print(f"Đã cập nhật file: {fpath}")
+
+          # Ghi ra Trang báo cáo trực quan (GitHub Step Summary)
+          with open(summary_file, "a", encoding="utf-8") as sf:
+              sf.write(f"## 🤖 Báo cáo thực thi AI (`{model}`)\n\n")
+              sf.write(f"- **Câu lệnh yêu cầu:** `{prompt}`\n")
+              sf.write(f"- **Trạng thái xác nhận:** **{status}**\n\n")
+              sf.write(f"### 💬 Câu trả lời & Giải thích từ AI:\n{answer}\n\n")
+              if updated_list:
+                  sf.write("### 📂 Các file đã tự động tạo/chỉnh sửa:\n")
+                  for uf in updated_list:
+                      sf.write(f"- `{uf}`\n")
+
+          with open("commit_msg.txt", "w", encoding="utf-8") as cf:
+              cf.write(data.get("commit_message", f"AI ({model}): {prompt[:50]}"))
+          EOF
+
+      - name: Tự động lưu code mới vào Repo
+        if: ${{ github.event.inputs.prompt != '' }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          if ! git diff --staged --quiet; then
+            git commit -m "$(cat commit_msg.txt)"
+            git push origin main
+          fi
+
+      - name: Đồng ý giấy phép SDK & Biên dịch APK Release
+        run: |
+          yes | sdkmanager --licenses || true
+          if [ ! -f "app/release.keystore" ]; then
+            keytool -genkey -v -keystore app/release.keystore -alias shieldkey \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass 123456 -keypass 123456 \
+              -dname "CN=Shield, OU=Security, O=Guard, L=HP, S=HP, C=VN"
+          fi
+          gradle assembleRelease
+
+      - name: Tải APK hoàn chỉnh lên trang kết quả
+        uses: actions/upload-artifact@v4
+        with:
+          name: SecureStub-Protected-APK
+          path: app/build/outputs/apk/release/app-release.apk
