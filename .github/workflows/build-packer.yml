@@ -1,4 +1,4 @@
-name: AI Coder & Build Android Shield
+name: AI Coder & Build iOS Shield
 
 on:
   workflow_dispatch:
@@ -17,13 +17,13 @@ on:
           - grok-4.6
           - glm-5.3
       prompt:
-        description: 'Nhập lệnh yêu cầu AI viết/sửa code (Để trống nếu chỉ muốn Build APK)'
+        description: 'Nhập lệnh yêu cầu AI viết/sửa code (Để trống nếu chỉ muốn Build IPA)'
         required: false
         type: string
 
 jobs:
   ai-and-build:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     permissions:
       contents: write
 
@@ -33,161 +33,209 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Cài đặt JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: '17'
-
-      - name: Cài đặt Python & Thư viện kết nối API
+      - name: Cài đặt Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Khởi tạo khung dự án mặc định (Nếu chưa có)
+      - name: Cài đặt XcodeGen (nếu chưa có)
         run: |
-          if [ ! -f "app/build.gradle" ]; then
-            mkdir -p app/src/main/java/com/secure/stub
-            mkdir -p app/src/main/cpp/engine
-            mkdir -p app/src/main/cpp/security
-            mkdir -p app/src/main/assets
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen
+          fi
 
-            cat << 'EOF' > settings.gradle
-          rootProject.name = "SecurePacker"
-          include ':app'
-          EOF
+      - name: Khởi tạo khung dự án iOS mặc định (Nếu chưa có)
+        run: |
+          if [ ! -f "project.yml" ]; then
+            mkdir -p Sources/Shield
 
-            cat << 'EOF' > build.gradle
-          buildscript {
-              repositories { google(); mavenCentral() }
-              dependencies { classpath 'com.android.tools.build:gradle:8.2.2' }
-          }
-          allprojects {
-              repositories { google(); mavenCentral() }
-          }
-          EOF
+            cat << 'EOF' > project.yml
+name: SecureShield
+options:
+  bundleIdPrefix: com.secure.shield
+  deploymentTarget:
+    iOS: "15.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    IPHONEOS_DEPLOYMENT_TARGET: "15.0"
+    CODE_SIGNING_REQUIRED: "NO"
+    CODE_SIGNING_ALLOWED: "NO"
+    CODE_SIGN_IDENTITY: ""
+targets:
+  SecureShield:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+    settings:
+      base:
+        INFOPLIST_FILE: Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.secure.shield
+        TARGETED_DEVICE_FAMILY: "1,2"
+EOF
 
-            cat << 'EOF' > app/obf-dict.txt
-          I242a775e
-          cxk
-          jntm
-          a9f3e1b
-          b7d2c4a
-          EOF
+            cat << 'EOF' > Info.plist
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>$(DEVELOPMENT_LANGUAGE)</string>
+    <key>CFBundleExecutable</key>
+    <string>$(EXECUTABLE_NAME)</string>
+    <key>CFBundleIdentifier</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>SecureShield</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSRequiresIPhoneOS</key>
+    <true/>
+    <key>UILaunchScreen</key>
+    <dict/>
+    <key>UIApplicationSceneManifest</key>
+    <dict>
+        <key>UIApplicationSupportsMultipleScenes</key>
+        <false/>
+    </dict>
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+    </array>
+</dict>
+</plist>
+EOF
 
-            cat << 'EOF' > app/proguard-rules.pro
-          -repackageclasses 'v242a775e'
-          -flattenpackagehierarchy 'v242a775e'
-          -classobfuscationdictionary obf-dict.txt
-          -obfuscationdictionary obf-dict.txt
-          -allowaccessmodification
-          -overloadaggressively
-          -renamesourcefileattribute ''
-          -keepattributes !SourceFile,!LineNumberTable
-          -keep class com.secure.stub.StubApp { <init>(); public static native boolean a(android.content.Context); }
-          -keep class com.secure.stub.MainActivity { <init>(); }
-          EOF
+            cat << 'EOF' > Sources/ShieldApp.swift
+import SwiftUI
 
-            cat << 'EOF' > app/src/main/AndroidManifest.xml
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.secure.stub">
-              <uses-permission android:name="android.permission.INTERNET" />
-              <application android:name="com.secure.stub.StubApp" android:allowBackup="false" android:label="SecureShield">
-                  <activity android:name="com.secure.stub.MainActivity" android:exported="true">
-                      <intent-filter>
-                          <action android:name="android.intent.action.MAIN" />
-                          <category android:name="android.intent.category.LAUNCHER" />
-                      </intent-filter>
-                  </activity>
-              </application>
-          </manifest>
-          EOF
+@main
+struct ShieldApp: App {
+    init() {
+        if !NativeShield.verifyIntegrity() {
+            // Lớp native phát hiện môi trường không an toàn → tự kết thúc
+            exit(0)
+        }
+    }
 
-            cat << 'EOF' > app/src/main/java/com/secure/stub/StubApp.java
-          package com.secure.stub;
-          import android.app.Application;
-          import android.content.Context;
-          import android.os.Process;
-          public class StubApp extends Application {
-              static { System.loadLibrary("core_shield"); }
-              public static native boolean a(Context ctx);
-              @Override
-              protected void attachBaseContext(Context base) {
-                  super.attachBaseContext(base);
-                  if (!a(base)) { Process.killProcess(Process.myPid()); System.exit(0); }
-              }
-          }
-          EOF
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+        }
+    }
+}
+EOF
 
-            cat << 'EOF' > app/src/main/java/com/secure/stub/MainActivity.java
-          package com.secure.stub;
-          import android.app.Activity;
-          import android.os.Bundle;
-          import android.widget.TextView;
-          public class MainActivity extends Activity {
-              @Override
-              protected void onCreate(Bundle savedInstanceState) {
-                  super.onCreate(savedInstanceState);
-                  TextView tv = new TextView(this);
-                  tv.setText("Protected by Native Core Shield");
-                  setContentView(tv);
-              }
-          }
-          EOF
+            cat << 'EOF' > Sources/ContentView.swift
+import SwiftUI
 
-            cat << 'EOF' > app/src/main/cpp/entry.cpp
-          #include <jni.h>
-          extern "C" JNIEXPORT jboolean JNICALL
-          Java_com_secure_stub_StubApp_a(JNIEnv* env, jclass, jobject context) {
-              return JNI_TRUE;
-          }
-          EOF
+struct ContentView: View {
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "shield.lefthalf.filled")
+                .font(.system(size: 64))
+                .foregroundColor(.blue)
+            Text("Protected by Native Core Shield")
+                .font(.headline)
+                .multilineTextAlignment(.center)
+        }
+        .padding()
+    }
+}
+EOF
 
-            cat << 'EOF' > app/src/main/cpp/CMakeLists.txt
-          cmake_minimum_required(VERSION 3.22.1)
-          project("core_shield")
-          set(CMAKE_CXX_STANDARD 17)
-          set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -fvisibility=hidden")
-          set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--strip-all")
-          file(GLOB_RECURSE CPP_SOURCES "*.cpp")
-          add_library(core_shield SHARED ${CPP_SOURCES})
-          find_library(log-lib log)
-          target_link_libraries(core_shield ${log-lib})
-          EOF
+            cat << 'EOF' > Sources/Shield/NativeShield.h
+#import <Foundation/Foundation.h>
 
-            cat << 'EOF' > app/build.gradle
-          apply plugin: 'com.android.application'
-          android {
-              namespace 'com.secure.stub'
-              compileSdk 34
-              defaultConfig {
-                  applicationId "com.secure.stub"
-                  minSdk 26
-                  targetSdk 34
-                  versionCode 1
-                  versionName "1.0"
-                  ndk { abiFilters 'arm64-v8a' }
-              }
-              signingConfigs {
-                  release {
-                      storeFile file("release.keystore")
-                      storePassword "123456"
-                      keyAlias "shieldkey"
-                      keyPassword "123456"
-                  }
-              }
-              buildTypes {
-                  release {
-                      minifyEnabled true
-                      shrinkResources false
-                      signingConfig signingConfigs.release
-                      proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-                  }
-              }
-              externalNativeBuild {
-                  cmake { path "src/main/cpp/CMakeLists.txt"; version "3.22.1" }
-              }
-          }
-          EOF
+NS_ASSUME_NONNULL_BEGIN
+
+@interface NativeShield : NSObject
++ (BOOL)verifyIntegrity;
+@end
+
+NS_ASSUME_NONNULL_END
+EOF
+
+            cat << 'EOF' > Sources/Shield/NativeShield.mm
+#import "NativeShield.h"
+#include "ShieldEngine.hpp"
+
+@implementation NativeShield
+
++ (BOOL)verifyIntegrity {
+    @try {
+        return secure::verify() ? YES : NO;
+    } @catch (NSException *e) {
+        return NO;
+    }
+}
+
+@end
+EOF
+
+            cat << 'EOF' > Sources/Shield/ShieldEngine.hpp
+#pragma once
+
+namespace secure {
+    // Kiểm tra toàn vẹn môi trường chạy (native layer)
+    bool verify();
+
+    // Bộ mã hóa rolling-XOR phía C++ (nhúng asset/chuỗi đã mã hóa)
+    void encode(const unsigned char* in, unsigned char* out,
+                unsigned long len, unsigned int key);
+}
+EOF
+
+            cat << 'EOF' > Sources/Shield/ShieldEngine.cpp
+#include "ShieldEngine.hpp"
+#include <cstddef>
+#include <cstdint>
+
+namespace secure {
+
+    void encode(const unsigned char* in, unsigned char* out,
+                unsigned long len, unsigned int key) {
+        uint32_t state = key ? key : 0xDEADBEEFu;
+        for (unsigned long i = 0; i < len; ++i) {
+            state = state * 1664525u + 1013904223u;                // LCG
+            out[i] = static_cast<unsigned char>(in[i] ^
+                     static_cast<unsigned char>(state >> 24));
+        }
+    }
+
+    bool verify() {
+        // Mẫu token được XOR-mã hóa sẵn với key 0xA1B2C3D4.
+        // Trong app thật: so sánh với hash giải mã của asset / chuỗi cấu hình.
+        static const unsigned char sample[] = { 0x8D, 0xB0, 0x4A, 0x93, 0x66 };
+        unsigned char buf[sizeof(sample)];
+        encode(sample, buf, sizeof(sample), 0xA1B2C3D4u);
+
+        volatile unsigned char acc = 0;
+        for (size_t i = 0; i < sizeof(buf); ++i) acc ^= buf[i];
+        (void)acc;
+        return true;
+    }
+
+}
+EOF
+
+            cat << 'EOF' > .gitignore
+build/
+Payload/
+*.ipa
+*.xcarchive
+*.xcodeproj
+xcuserdata/
+DerivedData/
+EOF
           fi
 
       - name: Gọi AI thực thi câu lệnh & Xuất trang báo cáo trực tiếp
@@ -196,43 +244,52 @@ jobs:
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
           AI_MODEL: ${{ github.event.inputs.model }}
           USER_PROMPT: ${{ github.event.inputs.prompt }}
-          STEP_SUMMARY: ${{ env.GITHUB_STEP_SUMMARY }}
+          # ✅ KHÔNG map GITHUB_STEP_SUMMARY ở đây — runner tự bơm biến này vào mọi step run
         run: |
           pip install requests
           python3 - << 'EOF'
           import os, glob, json, re, requests
 
           api_key = os.environ.get("AI_API_KEY", "").strip()
-          model = os.environ.get("AI_MODEL", "claude-sonnet-4-6").strip()
-          prompt = os.environ.get("USER_PROMPT", "").strip()
-          summary_file = os.environ.get("STEP_SUMMARY")
+          model   = os.environ.get("AI_MODEL", "claude-sonnet-4-6").strip()
+          prompt  = os.environ.get("USER_PROMPT", "").strip()
+
+          # ✅ Đọc thẳng biến mặc định của runner — KHÔNG dùng ${{ env.GITHUB_STEP_SUMMARY }}
+          summary_file = os.environ.get("GITHUB_STEP_SUMMARY") or None
 
           if not api_key:
               raise RuntimeError("Chưa cấu hình AI_API_KEY trong GitHub Secrets!")
 
-          # Thu thập toàn bộ mã nguồn hiện tại
+          # Thu thập mã nguồn iOS hiện tại
+          patterns = ["Sources/**/*", "project.yml", "Info.plist", ".gitignore"]
           codebase = {}
-          for path in glob.glob("app/**/*", recursive=True):
-              if os.path.isfile(path) and not path.endswith(('.keystore', '.png', '.jpg', '.so', '.jar')):
+          for pat in patterns:
+              for path in glob.glob(pat, recursive=True):
+                  if not os.path.isfile(path):
+                      continue
+                  if path.endswith(('.png', '.jpg', '.jpeg', '.so', '.a', '.ipa', '.xcarchive')):
+                      continue
                   try:
                       with open(path, "r", encoding="utf-8") as f:
                           codebase[path] = f.read()
                   except Exception:
                       pass
 
-          context_str = "MÃ NGUỒN HIỆN TẠI CỦA DỰ ÁN:\n\n"
+          context_str = "MÃ NGUỒN iOS HIỆN TẠI CỦA DỰ ÁN:\n\n"
           for p, c in codebase.items():
               context_str += f"--- FILE: {p} ---\n{c}\n--- END FILE ---\n\n"
 
           system_prompt = (
-              "Bạn là chuyên gia lập trình Android NDK C++ và Java bảo mật cấp cao. "
+              "Bạn là chuyên gia lập trình iOS (Swift, SwiftUI, Objective-C++) "
+              "và bảo mật native C++ cấp cao. Dự án dùng XcodeGen (project.yml) "
+              "và xcodebuild. Cầu nối Swift ↔ C++ qua file .mm. "
               "Phân tích mã nguồn hiện tại và thực hiện yêu cầu của người dùng. "
-              "BẮT BUỘC trả về kết quả duy nhất dưới định dạng JSON hợp lệ (không bọc markdown bên ngoài nếu có thể) theo cấu trúc:\n"
+              "BẮT BUỘC trả về kết quả duy nhất dưới định dạng JSON hợp lệ theo cấu trúc:\n"
               "{\n"
               '  "status": "LÀM ĐƯỢC hoặc KHÔNG LÀM ĐƯỢC",\n'
-              '  "answer": "Giải thích chi tiết AI đã làm gì và trả lời câu lệnh của người dùng",\n'
+              '  "answer": "Giải thích chi tiết AI đã làm gì và trả lời câu lệnh",\n'
               '  "files": [\n'
-              '    {"path": "app/src/main/cpp/...", "content": "Toàn bộ code hoàn chỉnh 100% không cắt xén"}\n'
+              '    {"path": "Sources/...", "content": "Toàn bộ code hoàn chỉnh 100% không cắt xén"}\n'
               '  ],\n'
               '  "commit_message": "Mô tả ngắn gọn thay đổi"\n'
               "}"
@@ -252,38 +309,50 @@ jobs:
           }
 
           print(f"Đang gửi lệnh tới mô hình [{model}] qua literouter.fun...")
-          resp = requests.post("https://literouter.fun/v1/chat/completions", headers=headers, json=payload, timeout=180)
+          resp = requests.post("https://literouter.fun/v1/chat/completions",
+                               headers=headers, json=payload, timeout=180)
           resp.raise_for_status()
-          res_json = resp.json()
-          raw_text = res_json["choices"][0]["message"]["content"].strip()
+          raw_text = resp.json()["choices"][0]["message"]["content"].strip()
 
-          # Bóc tách JSON an toàn
           match = re.search(r'\{[\s\S]*\}', raw_text)
           data = json.loads(match.group(0) if match else raw_text)
 
-          status = data.get("status", "LÀM ĐƯỢC")
-          answer = data.get("answer", "Đã xử lý yêu cầu.")
-          files = data.get("files", [])
+          status  = data.get("status", "LÀM ĐƯỢC")
+          answer  = data.get("answer", "Đã xử lý yêu cầu.")
+          files   = data.get("files", [])
 
           updated_list = []
           for item in files:
               fpath = item["path"]
-              os.makedirs(os.path.dirname(fpath), exist_ok=True)
+              d = os.path.dirname(fpath)
+              if d:                                   # ✅ tránh os.makedirs("") crash
+                  os.makedirs(d, exist_ok=True)
               with open(fpath, "w", encoding="utf-8") as f:
                   f.write(item["content"])
               updated_list.append(fpath)
               print(f"Đã cập nhật file: {fpath}")
 
-          # Ghi ra Trang báo cáo trực quan (GitHub Step Summary)
-          with open(summary_file, "a", encoding="utf-8") as sf:
-              sf.write(f"## 🤖 Báo cáo thực thi AI (`{model}`)\n\n")
-              sf.write(f"- **Câu lệnh yêu cầu:** `{prompt}`\n")
-              sf.write(f"- **Trạng thái xác nhận:** **{status}**\n\n")
-              sf.write(f"### 💬 Câu trả lời & Giải thích từ AI:\n{answer}\n\n")
-              if updated_list:
-                  sf.write("### 📂 Các file đã tự động tạo/chỉnh sửa:\n")
-                  for uf in updated_list:
-                      sf.write(f"- `{uf}`\n")
+          # ---------- Ghi Step Summary (có guard, không bao giờ nổ) ----------
+          def write_summary(text: str) -> None:
+              if not summary_file:
+                  print("⚠️  Bỏ qua Step Summary: GITHUB_STEP_SUMMARY rỗng.")
+                  return
+              try:
+                  with open(summary_file, "a", encoding="utf-8") as sf:
+                      sf.write(text)
+              except Exception as e:
+                  print(f"⚠️  Không ghi được Step Summary ({summary_file!r}): {e}")
+
+          report = []
+          report.append(f"## 🤖 Báo cáo thực thi AI (`{model}`)\n\n")
+          report.append(f"- **Câu lệnh yêu cầu:** `{prompt}`\n")
+          report.append(f"- **Trạng thái xác nhận:** **{status}**\n\n")
+          report.append(f"### 💬 Câu trả lời & Giải thích từ AI:\n{answer}\n\n")
+          if updated_list:
+              report.append("### 📂 Các file đã tự động tạo/chỉnh sửa:\n")
+              for uf in updated_list:
+                  report.append(f"- `{uf}`\n")
+          write_summary("".join(report))
 
           with open("commit_msg.txt", "w", encoding="utf-8") as cf:
               cf.write(data.get("commit_message", f"AI ({model}): {prompt[:50]}"))
@@ -297,22 +366,33 @@ jobs:
           git add .
           if ! git diff --staged --quiet; then
             git commit -m "$(cat commit_msg.txt)"
-            git push origin main
+            git push origin HEAD:${GITHUB_REF_NAME}
           fi
 
-      - name: Đồng ý giấy phép SDK & Biên dịch APK Release
+      - name: Build IPA Release (không ký code)
         run: |
-          yes | sdkmanager --licenses || true
-          if [ ! -f "app/release.keystore" ]; then
-            keytool -genkey -v -keystore app/release.keystore -alias shieldkey \
-              -keyalg RSA -keysize 2048 -validity 10000 \
-              -storepass 123456 -keypass 123456 \
-              -dname "CN=Shield, OU=Security, O=Guard, L=HP, S=HP, C=VN"
-          fi
-          gradle assembleRelease
+          xcodegen generate
 
-      - name: Tải APK hoàn chỉnh lên trang kết quả
+          xcodebuild \
+            -project SecureShield.xcodeproj \
+            -scheme SecureShield \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+
+          # Đóng gói thành .ipa (chưa ký — cần sign khi cài lên máy thật)
+          rm -rf Payload SecureShield.ipa
+          mkdir -p Payload
+          cp -R "build/Build/Products/Release-iphoneos/SecureShield.app" Payload/
+          zip -r SecureShield.ipa Payload
+
+      - name: Tải IPA hoàn chỉnh lên trang kết quả
         uses: actions/upload-artifact@v4
         with:
-          name: SecureStub-Protected-APK
-          path: app/build/outputs/apk/release/app-release.apk
+          name: SecureShield-ipa
+          path: SecureShield.ipa
+          if-no-files-found: error
